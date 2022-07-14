@@ -59,6 +59,19 @@ class Photos(Resource):
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             return {'response': 'File successfully uploaded', 'success': True}
         return {'response': 'Allowed file types are txt, pdf, png, jpg, jpeg, gif', 'success': False}
+    def get(self):
+        # Get all photos organized by their parent directory
+        photos = {}
+        for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
+            for file in files:
+                if file.endswith('.png') or file.endswith('.jpg') or file.endswith('.jpeg') or file.endswith('.gif'):
+                    section = root.split('/')[-1]
+                    if section not in photos:
+                        photos[section] = []
+                    photo = {'name': file, 'url': '/uploads/' + section + '/' + file}
+                    photos[section].append(photo)
+        return {'response': photos, 'success': True}
+
 api.add_resource(Photos, '/photos')
 
 class Sections(Resource):
