@@ -12,7 +12,8 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-CORS(app, supports_credentials=True)
+# Set up cors support for all routes
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 api = Api(app)
 def get_connection():
     global connection
@@ -31,7 +32,10 @@ def get_connection():
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
+class Greeting(Resource):
+    def get(self):
+        return {'greeting': 'Hello, World!'}
+api.add_resource(Greeting, '/')
 class Login(Resource):
     def post(self):
         username = request.json['username']
@@ -59,6 +63,26 @@ class Photos(Resource):
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
             return {'response': 'File successfully uploaded', 'success': True}
         return {'response': 'Allowed file types are txt, pdf, png, jpg, jpeg, gif', 'success': False}
+    def get(self):
+        # Get all photos organized by their parent directory
+        photos = {}
+        for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
+            for file in files:
+                #if file is an image regardless of capitalization
+                if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
+                    section = root.split('/')[-1]
+                    if section not in photos:
+                        photos[section] = []
+                    photo = {'name': file, 'url': 'https://uploads.jaydnserrano.com/' + section + '/' + file}
+                    photos[section].append(photo)
+        return {'response': photos, 'success': True}
+    def delete(self):
+        # Delete particular photo
+        filename = request.json['section'] + '/' + request.json['name']
+        if os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], filename)):
+            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            return {'response': 'File successfully deleted', 'success': True}
+        return {'response': 'File does not exist', 'success': False}
 api.add_resource(Photos, '/photos')
 
 class Sections(Resource):
@@ -71,8 +95,16 @@ class Sections(Resource):
                 os.makedirs(app.config['UPLOAD_FOLDER'] + '/' + section)
         return {'response': 'Sections successfully created', 'success': True}
     def get(self):
-        # Send the list of sections as json
-        return {'response': os.listdir(app.config['UPLOAD_FOLDER']), 'success': True}
+        # Send the list of sections as json excluding the 'other' section
+        sections = []
+        for section in os.listdir(app.config['UPLOAD_FOLDER']):
+            if section != 'other':
+                sections.append(section)
+        # Count the number of photos in each section
+        count = {}
+        for section in sections:
+            count[section] = len(os.listdir(app.config['UPLOAD_FOLDER'] + '/' + section))
+        return {'sections': sections, 'count': count, 'success': True}
     def delete(self):
         # Retrieve the section name from the request
         sections = request.json['sections']
@@ -91,4 +123,4 @@ api.add_resource(Sections, '/sections')
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True , threaded=True)
