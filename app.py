@@ -67,9 +67,9 @@ class Database(Resource):
                 # Format date to YYYY-MM-DD hh:mm:ss EST format
                 format_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
                 # Insert the directory into the database
-                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, isPhoto, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/'+ dir
-                cursor.execute(query, (dir, parent_val, '1', '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+                cursor.execute(query, (dir, parent_val, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
                 mysql.connection.commit()
                 cursor.close()
                 # Add the directory to the stack
@@ -78,9 +78,9 @@ class Database(Resource):
                 cursor = mysql.connection.cursor()
                 now = datetime.datetime.now()
                 format_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
-                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, isPhoto, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/' + photo
-                cursor.execute(query, (photo, parent_val, '0', '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+                cursor.execute(query, (photo, parent_val, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
                 mysql.connection.commit()
                 cursor.close()
                 stack.append(root + '/' + photo)
@@ -157,13 +157,13 @@ class Sections(Resource):
             os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], section))
         return {'response': 'Sections successfully created', 'success': True}
     def get(self):
-        # Dirent Structure: id, name, parent_dirent, isDir, isPhoto, created_at, path
+        # Dirent Structure: id, name, parent_dirent, isDir, created_at, path
         root = {'dirs': [], 'photos': [] }
         # Get all the root directories
         cursor = mysql.connection.cursor()
         query = "SELECT * FROM Dirents WHERE parent_dirent IS NULL"
         cursor.execute(query)
-        for (id, name, parent_dirent, isDir, isPhoto, created_at, path, url) in cursor.fetchall():
+        for (id, name, parent_dirent, isDir, created_at, path, url) in cursor.fetchall():
             if(isDir == 1):
                 root['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S")})
             else:
@@ -173,7 +173,7 @@ class Sections(Resource):
         # Get all the subdirectories
         query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL"
         cursor.execute(query)
-        for (id, name, parent_dirent, isDir, isPhoto, created_at, path, url) in cursor.fetchall():
+        for (id, name, parent_dirent, isDir, created_at, path, url) in cursor.fetchall():
             parent = find_parent(root, parent_dirent)
             if(isDir == 1):
                 parent['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S")})
