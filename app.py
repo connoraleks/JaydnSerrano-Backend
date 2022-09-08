@@ -1,4 +1,3 @@
-import json
 import os
 from wsgiref.handlers import format_date_time
 from flask import Flask, request, redirect
@@ -46,11 +45,39 @@ def find_parent(root, parent_id):
 
 class Greeting(Resource):
     def get(self):
-        return {'greeting': 'Hello, World!'}
+        # Return a table of contents for the API links below
+        return {
+            'api': [
+                {
+                    'url': '/database',
+                    'method': 'GET',
+                    'description': 'Verifies the integrity of the database contents with the filesystem'
+                },
+                {
+                    'url': '/login',
+                    'method': 'POST',
+                    'description': 'Logs in a use to the admin panel'
+                },
+                {
+                    'url': '/dirents',
+                    'method': 'POST',
+                    'description': 'Inserts a new directory entry into the database'
+                },
+                {
+                    'url': '/dirents',
+                    'method': 'GET',
+                    'description': 'Returns a list of directory entries'
+                },
+                {
+                    'url': '/dirents',
+                    'method': 'DELETE',
+                    'description': 'Deletes a directory entry from the database'
+                }]}
+        
 api.add_resource(Greeting, '/')
 class Database(Resource):
     def get(self):
-        # Recursively sets all section names from upload folder
+        # Recursively sets all dirent names from upload folder
         stack = []
         for root, dirs, files in os.walk(UPLOAD_FOLDER):
             parent_val = None
@@ -97,65 +124,28 @@ class Login(Resource):
         return {'response': 'Invalid username or password', 'success': False}
 api.add_resource(Login, '/login')
 
-class Photos(Resource):
+class Dirents(Resource):
     def post(self):
-        if 'file' not in request.files:
-            return {'response': 'No file part', 'success': False}
-        file = request.files['file']
-        if file.filename == '':
-            return {'response': 'No file selected for uploading', 'success': False}
-        if file and allowed_file(file.filename):
-            filename = request.form['section'] + '/' + request.form['name']
-            # Save file, make parent directory if it doesn't exist
-            if not os.path.exists(os.path.dirname(os.path.join(app.config['UPLOAD_FOLDER'], filename))):
-                os.makedirs(os.path.dirname(os.path.join(app.config['UPLOAD_FOLDER'], filename)))
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            return {'response': 'File successfully uploaded', 'success': True}
-        return {'response': 'Allowed file types are txt, pdf, png, jpg, jpeg, gif', 'success': False}
-    def get(self):
-        #Get all photos by walking the upload folder
-        photos = {}
-        for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
-            root = root.split('/')[-1]
-            photos[root] = []
-            for file in files:
-                im = Image.open(UPLOAD_FOLDER + '/' + root + '/' + file)
-                width, height = im.size
-                photos[root].append({'name': file, 'src': 'https://uploads.jaydnserrano.com/' + root + '/' + file, 'width': width, 'height': height})
-        return {'response': 'Successfully retrieved all photos', 'success': True, 'photos': photos}
-         
-            
-    def delete(self):
-        # Delete particular photo
-        filename = request.json['section'] + '/' + request.json['name']
-        if os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], filename)):
-            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            return {'response': 'File successfully deleted', 'success': True}
-        return {'response': 'File does not exist', 'success': False}
-api.add_resource(Photos, '/photos')
-
-class Sections(Resource):
-    def post(self):
-        # Retrieve the section name from the request
-        section = request.json['section']
+        # Retrieve the dirent name from the request
+        dirent = request.json['dirent']
         parent = request.json['parent'] if 'parent' in request.json else None
-        # If the section exists and the parent is the same, return success
+        # If the dirent exists and the parent is the same, return success
         cur = mysql.connection.cursor()
-        cur.execute("SELECT * FROM Sections WHERE name = %s", (section,))
+        cur.execute("SELECT * FROM Dirents WHERE name = %s", (dirent,))
         if cur.rowcount > 0 and cur.fetchone()[2] == parent:
-            return {'response': 'Section already exists', 'success': True}
-        # If the section doesn't exist, create it
-        cur.execute("INSERT IGNORE INTO Sections (name, parent) VALUES (%s, %s)", (section, parent))
+            return {'response': 'Dirent already exists', 'success': True}
+        # If the dirent doesn't exist, create it
+        cur.execute("INSERT IGNORE INTO Dirents (name, parent) VALUES (%s, %s)", (dirent, parent))
         mysql.connection.commit()
         cur.close()
-        # if parent is not None, add it to section name 
+        # if parent is not None, add it to dirent name 
         if parent is not None:
-            section = parent + '/' + section
-        print(section)
+            dirent = parent + '/' + dirent
+        print(dirent)
         # If the directory doesn't exist, create it
-        if not os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], section)):
-            os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], section))
-        return {'response': 'Sections successfully created', 'success': True}
+        if not os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], dirent)):
+            os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], dirent))
+        return {'response': 'Dirents successfully created', 'success': True}
     def get(self):
         # Dirent Structure: id, name, parent_dirent, isDir, created_at, path
         root = {'dirs': [], 'photos': [] }
@@ -181,20 +171,20 @@ class Sections(Resource):
                 im = Image.open(UPLOAD_FOLDER + path)
                 width, height = im.size
                 parent['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S")})
-        return {'response': 'Successfully retrieved all sections', 'success': True, 'sections': root}
+        return {'response': 'Successfully retrieved all dirents', 'success': True, 'dirents': root}
     def delete(self):
-        # Retrieve the section name from the request
-        sections = request.json['sections']
-        # Move all files to the 'other' section
-        for section in sections:
-            for filename in os.listdir(app.config['UPLOAD_FOLDER'] + '/' + section):
-                os.rename(app.config['UPLOAD_FOLDER'] + '/' + section + '/' + filename, app.config['UPLOAD_FOLDER'] + '/other/' + filename)
-        # Delete section folders
-        for section in sections:
-            if os.path.exists(app.config['UPLOAD_FOLDER'] + '/' + section):
-                os.rmdir(app.config['UPLOAD_FOLDER'] + '/' + section)
-        return {'response': 'Sections successfully deleted', 'success': True}
-api.add_resource(Sections, '/sections')
+        # Retrieve the dirent name from the request
+        dirents = request.json['dirents']
+        # Move all files to the 'other' dirent
+        for dirent in dirents:
+            for filename in os.listdir(app.config['UPLOAD_FOLDER'] + '/' + dirent):
+                os.rename(app.config['UPLOAD_FOLDER'] + '/' + dirent + '/' + filename, app.config['UPLOAD_FOLDER'] + '/other/' + filename)
+        # Delete dirent folders
+        for dirent in dirents:
+            if os.path.exists(app.config['UPLOAD_FOLDER'] + '/' + dirent):
+                os.rmdir(app.config['UPLOAD_FOLDER'] + '/' + dirent)
+        return {'response': 'Dirents successfully deleted', 'success': True}
+api.add_resource(Dirents, '/dirents')
 
 
 
