@@ -117,35 +117,58 @@ class Login(Resource):
     def post(self):
         username = request.json['username']
         password = request.json['password']
-        return self.validate(username, password)
-    def validate(self, username, password):
-        if username == os.environ['JSADMIN_USERNAME'] and request.json['password'] == os.environ['JSADMIN_PASSWORD']:
-            return {'response': 'Login successful', 'success': True}
-        return {'response': 'Invalid username or password', 'success': False}
+        return {'response': 'Login successful', 'success': True} if username == os.environ['JSADMIN_USERNAME'] and password == os.environ['JSADMIN_PASSWORD'] else {'response': 'Login failed', 'success': False}
 api.add_resource(Login, '/login')
 
 class Dirents(Resource):
     def post(self):
-        # Retrieve the dirent name from the request
-        dirent = request.json['dirent']
-        parent = request.json['parent'] if 'parent' in request.json else None
-        # If the dirent exists and the parent is the same, return success
-        cur = mysql.connection.cursor()
-        cur.execute("SELECT * FROM Dirents WHERE name = %s", (dirent,))
-        if cur.rowcount > 0 and cur.fetchone()[2] == parent:
+        # Retrieve the name name from the request
+        name = request.form['name']
+        # Retrieve the parent name id from the request
+        parent = request.form['parent']
+        # Retrieve the type of name from the request (0 = photo, 1 = directory)
+        direntType = request.form['type']
+        # Make cursor
+        cursor = mysql.connection.cursor()
+        
+        # Check if name already exists
+        cursor.execute("SELECT * FROM Dirents WHERE name = %s", (name,))
+        if cursor.rowcount > 0:
             return {'response': 'Dirent already exists', 'success': True}
-        # If the dirent doesn't exist, create it
-        cur.execute("INSERT IGNORE INTO Dirents (name, parent) VALUES (%s, %s)", (dirent, parent))
-        mysql.connection.commit()
-        cur.close()
-        # if parent is not None, add it to dirent name 
-        if parent is not None:
-            dirent = parent + '/' + dirent
-        print(dirent)
-        # If the directory doesn't exist, create it
-        if not os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], dirent)):
-            os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], dirent))
-        return {'response': 'Dirents successfully created', 'success': True}
+        parent_path = ''
+        # Query for the parent name path
+        if parent: 
+            cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent, ))
+            parent_path = cursor.fetchone()[0]
+        
+        format_date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        path = parent_path + '/' + name
+        # Insert the directory into the database
+        if direntType == '1':
+            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(query, (name, parent, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+            # Commit the changes to the database
+            mysql.connection.commit()
+            cursor.close()
+                        
+        elif direntType == '0':
+            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(query, (name, parent, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+            # Commit the changes to the database
+            mysql.connection.commit()
+            cursor.close()
+        
+        # Make the directory or copy the image to the location specified by the variable path
+        if direntType == '1':
+            print('This is upload path: ' + UPLOAD_FOLDER[1:] + path)
+            os.makedirs(UPLOAD_FOLDER[1:] + path)
+        elif direntType == '0':
+            file = request.files['file']
+            file.save(UPLOAD_FOLDER[1:] + path)
+        return {'response': 'Dirent created at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
+        
+        
+        
     def get(self):
         # Dirent Structure: id, name, parent_dirent, isDir, created_at, path
         root = {'dirs': [], 'photos': [] }
