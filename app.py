@@ -6,7 +6,6 @@ from flask_restful import Resource, Api
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from PIL import Image
-import math
 import datetime
 
 UPLOAD_FOLDER = '/usr/local/uploads'
@@ -125,7 +124,7 @@ class Dirents(Resource):
         # Retrieve the name name from the request
         name = request.form['name']
         # Retrieve the parent name id from the request
-        parent = request.form['parent']
+        parent = request.form['parent'] if request.form['parent'] != '-1' else None
         # Retrieve the type of name from the request (0 = photo, 1 = directory)
         direntType = request.form['type']
         # Make cursor
@@ -137,7 +136,8 @@ class Dirents(Resource):
             return {'response': 'Dirent already exists', 'success': True}
         parent_path = ''
         # Query for the parent name path
-        if parent: 
+        print(parent)
+        if parent != None: 
             cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent, ))
             parent_path = cursor.fetchone()[0]
         
@@ -166,9 +166,7 @@ class Dirents(Resource):
             file = request.files['file']
             file.save(UPLOAD_FOLDER[1:] + path)
         return {'response': 'Dirent created at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
-        
-        
-        
+         
     def get(self):
         # Dirent Structure: id, name, parent_dirent, isDir, created_at, path
         root = {'dirs': [], 'photos': [] }
@@ -195,19 +193,36 @@ class Dirents(Resource):
                 width, height = im.size
                 parent['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S")})
         return {'response': 'Successfully retrieved all dirents', 'success': True, 'dirents': root}
-    def delete(self):
-        # Retrieve the dirent name from the request
-        dirents = request.json['dirents']
-        # Move all files to the 'other' dirent
-        for dirent in dirents:
-            for filename in os.listdir(app.config['UPLOAD_FOLDER'] + '/' + dirent):
-                os.rename(app.config['UPLOAD_FOLDER'] + '/' + dirent + '/' + filename, app.config['UPLOAD_FOLDER'] + '/other/' + filename)
-        # Delete dirent folders
-        for dirent in dirents:
-            if os.path.exists(app.config['UPLOAD_FOLDER'] + '/' + dirent):
-                os.rmdir(app.config['UPLOAD_FOLDER'] + '/' + dirent)
-        return {'response': 'Dirents successfully deleted', 'success': True}
-api.add_resource(Dirents, '/dirents')
+    
+    def delete(self, id):
+        # Retrieve the name id from the url (format: /dirents/<id>)
+        print('id: ' + id)
+        # Make cursor
+        cursor = mysql.connection.cursor()
+        # Query for the name path
+        cursor.execute("SELECT isDir,path FROM Dirents WHERE id = %s", (id, ))
+        isDir, path = cursor.fetchone()
+        if(path and isDir == 1):
+            # See if the directory is empty
+            cursor.execute("SELECT * FROM Dirents WHERE parent_dirent = %s", (id, ))
+            if cursor.rowcount > 0:
+                return {'response': 'Directory is not empty', 'success': False}
+        if(path):
+            # Delete the row from the database
+            cursor.execute("DELETE FROM Dirents WHERE id = %s", (id, ))
+            # Commit the changes to the database
+            cursor.connection.commit()
+            # Delete the directory or image from the location specified by the variable path
+            if os.path.isdir(UPLOAD_FOLDER + path):
+                os.rmdir(UPLOAD_FOLDER[1:] + path)
+            else:
+                os.remove(UPLOAD_FOLDER[1:] + path)
+            return {'response': 'Dirent deleted at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
+        else:
+            return {'response': 'Dirent does not exist', 'success': False}
+        
+        
+api.add_resource(Dirents, '/dirents', '/dirents/<id>')
 
 
 
