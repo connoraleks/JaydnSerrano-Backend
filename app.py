@@ -1,4 +1,3 @@
-import json
 import os
 from wsgiref.handlers import format_date_time
 from flask import Flask, request, redirect
@@ -7,7 +6,6 @@ from flask_restful import Resource, Api
 from werkzeug.utils import secure_filename
 from flask_cors import CORS
 from PIL import Image
-import math
 import datetime
 
 UPLOAD_FOLDER = '/usr/local/uploads'
@@ -46,11 +44,39 @@ def find_parent(root, parent_id):
 
 class Greeting(Resource):
     def get(self):
-        return {'greeting': 'Hello, World!'}
+        # Return a table of contents for the API links below
+        return {
+            'api': [
+                {
+                    'url': '/database',
+                    'method': 'GET',
+                    'description': 'Verifies the integrity of the database contents with the filesystem'
+                },
+                {
+                    'url': '/login',
+                    'method': 'POST',
+                    'description': 'Logs in a use to the admin panel'
+                },
+                {
+                    'url': '/dirents',
+                    'method': 'POST',
+                    'description': 'Inserts a new directory entry into the database'
+                },
+                {
+                    'url': '/dirents',
+                    'method': 'GET',
+                    'description': 'Returns a list of directory entries'
+                },
+                {
+                    'url': '/dirents',
+                    'method': 'DELETE',
+                    'description': 'Deletes a directory entry from the database'
+                }]}
+        
 api.add_resource(Greeting, '/')
 class Database(Resource):
     def get(self):
-        # Recursively sets all section names from upload folder
+        # Recursively sets all dirent names from upload folder
         stack = []
         for root, dirs, files in os.walk(UPLOAD_FOLDER):
             parent_val = None
@@ -67,9 +93,9 @@ class Database(Resource):
                 # Format date to YYYY-MM-DD hh:mm:ss EST format
                 format_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
                 # Insert the directory into the database
-                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, isPhoto, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url, priority) VALUES (%s, %s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/'+ dir
-                cursor.execute(query, (dir, parent_val, '1', '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+                cursor.execute(query, (dir, parent_val, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path, '0'))
                 mysql.connection.commit()
                 cursor.close()
                 # Add the directory to the stack
@@ -78,123 +104,125 @@ class Database(Resource):
                 cursor = mysql.connection.cursor()
                 now = datetime.datetime.now()
                 format_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
-                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, isPhoto, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url, priority) VALUES (%s, %s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/' + photo
-                cursor.execute(query, (photo, parent_val, '0', '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+                cursor.execute(query, (photo, parent_val, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path, '0'))
                 mysql.connection.commit()
                 cursor.close()
                 stack.append(root + '/' + photo)
-        return {'status': 'success', 'data': stack}
+        return {'success': True, 'data': stack}
 api.add_resource(Database, '/database')
 class Login(Resource):
     def post(self):
         username = request.json['username']
         password = request.json['password']
-        return self.validate(username, password)
-    def validate(self, username, password):
-        if username == os.environ['JSADMIN_USERNAME'] and request.json['password'] == os.environ['JSADMIN_PASSWORD']:
-            return {'response': 'Login successful', 'success': True}
-        return {'response': 'Invalid username or password', 'success': False}
+        return {'response': 'Login successful', 'success': True} if username == os.environ['JSADMIN_USERNAME'] and password == os.environ['JSADMIN_PASSWORD'] else {'response': 'Login failed', 'success': False}
 api.add_resource(Login, '/login')
 
-class Photos(Resource):
+class Dirents(Resource):
     def post(self):
-        if 'file' not in request.files:
-            return {'response': 'No file part', 'success': False}
-        file = request.files['file']
-        if file.filename == '':
-            return {'response': 'No file selected for uploading', 'success': False}
-        if file and allowed_file(file.filename):
-            filename = request.form['section'] + '/' + request.form['name']
-            # Save file, make parent directory if it doesn't exist
-            if not os.path.exists(os.path.dirname(os.path.join(app.config['UPLOAD_FOLDER'], filename))):
-                os.makedirs(os.path.dirname(os.path.join(app.config['UPLOAD_FOLDER'], filename)))
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            return {'response': 'File successfully uploaded', 'success': True}
-        return {'response': 'Allowed file types are txt, pdf, png, jpg, jpeg, gif', 'success': False}
-    def get(self):
-        #Get all photos by walking the upload folder
-        photos = {}
-        for root, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
-            root = root.split('/')[-1]
-            photos[root] = []
-            for file in files:
-                im = Image.open(UPLOAD_FOLDER + '/' + root + '/' + file)
-                width, height = im.size
-                photos[root].append({'name': file, 'src': 'https://uploads.jaydnserrano.com/' + root + '/' + file, 'width': width, 'height': height})
-        return {'response': 'Successfully retrieved all photos', 'success': True, 'photos': photos}
+        # Retrieve the name name from the request
+        name = request.form['name']
+        # Retrieve the parent name id from the request
+        parent = request.form['parent'] if request.form['parent'] != '-1' else None
+        # Retrieve the type of name from the request (0 = photo, 1 = directory)
+        direntType = request.form['type']
+        # Make cursor
+        cursor = mysql.connection.cursor()
+        
+        # Check if name already exists
+        cursor.execute("SELECT * FROM Dirents WHERE name = %s", (name,))
+        if cursor.rowcount > 0:
+            return {'response': 'Dirent already exists', 'success': True}
+        parent_path = ''
+        # Query for the parent name path
+        print(parent)
+        if parent != None: 
+            cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent, ))
+            parent_path = cursor.fetchone()[0]
+        
+        format_date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        path = parent_path + '/' + name
+        # Insert the directory into the database
+        if direntType == '1':
+            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url, priority) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            cursor.execute(query, (name, parent, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path, '0'))
+            # Commit the changes to the database
+            mysql.connection.commit()
+            cursor.close()
+                        
+        elif direntType == '0':
+            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url, priority) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            cursor.execute(query, (name, parent, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path), '0')
+            # Commit the changes to the database
+            mysql.connection.commit()
+            cursor.close()
+        
+        # Make the directory or copy the image to the location specified by the variable path
+        if direntType == '1':
+            print('This is upload path: ' + UPLOAD_FOLDER[1:] + path)
+            os.makedirs(UPLOAD_FOLDER[1:] + path)
+        elif direntType == '0':
+            file = request.files['file']
+            file.save(UPLOAD_FOLDER[1:] + path)
+        return {'response': 'Dirent created at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
          
-            
-    def delete(self):
-        # Delete particular photo
-        filename = request.json['section'] + '/' + request.json['name']
-        if os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], filename)):
-            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            return {'response': 'File successfully deleted', 'success': True}
-        return {'response': 'File does not exist', 'success': False}
-api.add_resource(Photos, '/photos')
-
-class Sections(Resource):
-    def post(self):
-        # Retrieve the section name from the request
-        section = request.json['section']
-        parent = request.json['parent'] if 'parent' in request.json else None
-        # If the section exists and the parent is the same, return success
-        cur = mysql.connection.cursor()
-        cur.execute("SELECT * FROM Sections WHERE name = %s", (section,))
-        if cur.rowcount > 0 and cur.fetchone()[2] == parent:
-            return {'response': 'Section already exists', 'success': True}
-        # If the section doesn't exist, create it
-        cur.execute("INSERT IGNORE INTO Sections (name, parent) VALUES (%s, %s)", (section, parent))
-        mysql.connection.commit()
-        cur.close()
-        # if parent is not None, add it to section name 
-        if parent is not None:
-            section = parent + '/' + section
-        print(section)
-        # If the directory doesn't exist, create it
-        if not os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], section)):
-            os.makedirs(os.path.join(app.config['UPLOAD_FOLDER'], section))
-        return {'response': 'Sections successfully created', 'success': True}
     def get(self):
-        # Dirent Structure: id, name, parent_dirent, isDir, isPhoto, created_at, path
+        # Dirent Structure: id, name, parent_dirent, isDir, created_at, path
         root = {'dirs': [], 'photos': [] }
         # Get all the root directories
         cursor = mysql.connection.cursor()
         query = "SELECT * FROM Dirents WHERE parent_dirent IS NULL"
         cursor.execute(query)
-        for (id, name, parent_dirent, isDir, isPhoto, created_at, path, url) in cursor.fetchall():
+        for (id, name, parent_dirent, isDir, created_at, path, url, priority) in cursor.fetchall():
             if(isDir == 1):
-                root['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S")})
+                root['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
             else:
                 im = Image.open(UPLOAD_FOLDER + path)
                 width, height = im.size
-                root['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S")})
+                root['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
         # Get all the subdirectories
         query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL"
         cursor.execute(query)
-        for (id, name, parent_dirent, isDir, isPhoto, created_at, path, url) in cursor.fetchall():
+        for (id, name, parent_dirent, isDir, created_at, path, url, priority) in cursor.fetchall():
             parent = find_parent(root, parent_dirent)
             if(isDir == 1):
-                parent['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S")})
+                parent['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
             else:
                 im = Image.open(UPLOAD_FOLDER + path)
                 width, height = im.size
-                parent['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S")})
-        return {'response': 'Successfully retrieved all sections', 'success': True, 'sections': root}
-    def delete(self):
-        # Retrieve the section name from the request
-        sections = request.json['sections']
-        # Move all files to the 'other' section
-        for section in sections:
-            for filename in os.listdir(app.config['UPLOAD_FOLDER'] + '/' + section):
-                os.rename(app.config['UPLOAD_FOLDER'] + '/' + section + '/' + filename, app.config['UPLOAD_FOLDER'] + '/other/' + filename)
-        # Delete section folders
-        for section in sections:
-            if os.path.exists(app.config['UPLOAD_FOLDER'] + '/' + section):
-                os.rmdir(app.config['UPLOAD_FOLDER'] + '/' + section)
-        return {'response': 'Sections successfully deleted', 'success': True}
-api.add_resource(Sections, '/sections')
+                parent['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+        return {'response': 'Successfully retrieved all dirents', 'success': True, 'dirents': root}
+    
+    def delete(self, id):
+        # Retrieve the name id from the url (format: /dirents/<id>)
+        print('id: ' + id)
+        # Make cursor
+        cursor = mysql.connection.cursor()
+        # Query for the name path
+        cursor.execute("SELECT isDir,path FROM Dirents WHERE id = %s", (id, ))
+        isDir, path = cursor.fetchone()
+        if(path and isDir == 1):
+            # See if the directory is empty
+            cursor.execute("SELECT * FROM Dirents WHERE parent_dirent = %s", (id, ))
+            if cursor.rowcount > 0:
+                return {'response': 'Directory is not empty', 'success': False}
+        if(path):
+            # Delete the row from the database
+            cursor.execute("DELETE FROM Dirents WHERE id = %s", (id, ))
+            # Commit the changes to the database
+            cursor.connection.commit()
+            # Delete the directory or image from the location specified by the variable path
+            if os.path.isdir(UPLOAD_FOLDER + path):
+                os.rmdir(UPLOAD_FOLDER[1:] + path)
+            else:
+                os.remove(UPLOAD_FOLDER[1:] + path)
+            return {'response': 'Dirent deleted at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
+        else:
+            return {'response': 'Dirent does not exist', 'success': False}
+        
+        
+api.add_resource(Dirents, '/dirents', '/dirents/<id>')
 
 
 
