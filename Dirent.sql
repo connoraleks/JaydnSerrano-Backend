@@ -5,7 +5,8 @@ CREATE TABLE `Dirents` (
   `isDir` boolean,
   `created_at` timestamp,
   `path` varchar(512),
-  `url` varchar(255)
+  `url` varchar(255),
+  `priority` int
 );
 
 ALTER TABLE `Dirents` ADD FOREIGN KEY (`parent_dirent`) REFERENCES `Dirents` (`id`);
