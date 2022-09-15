@@ -6,7 +6,7 @@ CREATE TABLE `Dirents` (
   `created_at` timestamp,
   `path` varchar(512),
   `url` varchar(255),
-  `priority` int
+  `priority` int DEFAULT 0
 );
 
 ALTER TABLE `Dirents` ADD FOREIGN KEY (`parent_dirent`) REFERENCES `Dirents` (`id`);
