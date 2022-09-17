@@ -101,10 +101,13 @@ class Database(Resource):
                 now = datetime.datetime.now()
                 # Format date to YYYY-MM-DD hh:mm:ss EST format
                 format_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
-                # Insert the directory into the database
+                # Attempt to Insert the directory into the database
                 query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/'+ dir
                 cursor.execute(query, (dir, parent_val, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+                mysql.connection.commit()
+                # Update the path and url of the directory
+                cursor.execute("UPDATE Dirents SET path = %s, url = %s WHERE name = %s", (path, 'https://uploads.jaydnserrano.com'+path, dir))
                 mysql.connection.commit()
                 cursor.close()
                 # Add the directory to the stack
@@ -116,6 +119,8 @@ class Database(Resource):
                 query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/' + photo
                 cursor.execute(query, (photo, parent_val, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+                mysql.connection.commit()
+                cursor.execute("UPDATE Dirents SET path = %s, url = %s WHERE name = %s", (path, 'https://uploads.jaydnserrano.com'+path, photo))
                 mysql.connection.commit()
                 cursor.close()
                 stack.append(root + '/' + photo)
@@ -227,7 +232,22 @@ class Dirents(Resource):
                 os.remove(UPLOAD_FOLDER[1:] + path)
             return {'response': 'Dirent deleted at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
         else:
-            return {'response': 'Dirent does not exist', 'success': False}   
+            return {'response': 'Dirent does not exist', 'success': False}
+    def put(self, id):
+        name = request.form['name']
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT path FROM Dirents WHERE id = %s", (id, ))
+        path = cursor.fetchone()[0]
+        # Rename the directory or image from the location specified by the variable path
+        try:
+            os.rename(UPLOAD_FOLDER[1:] + path, UPLOAD_FOLDER[1:] + path[:path.rfind('/')+1] + name)
+            cursor.execute("UPDATE Dirents SET name = %s, path = %s, url = %s WHERE id = %s", (name, path[:path.rfind('/')+1] + name, 'https://uploads.jaydnserrano.com' + path[:path.rfind('/')+1] + name, id))
+            cursor.connection.commit()
+            return {'response': 'Dirent renamed at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
+        except Exception as e:
+            print(e)
+            return {'response': 'Dirent could not be renamed', 'success': False, 'error': str(e)}
+        
 api.add_resource(Dirents, '/dirents', '/dirents/<id>')
 
 
