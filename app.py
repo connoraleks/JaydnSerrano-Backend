@@ -36,12 +36,23 @@ def allowed_file(filename):
 def find_parent(root, parent_id):
     # root = { dirs: [], photos: [] }
     # recursively find the parent dict
+    child = None
+    if(len(root['dirs']) == 0):
+        return None
     for dir in root['dirs']:
         if dir['id'] == parent_id:
             return dir
     for dir in root['dirs']:
-        return find_parent(dir, parent_id)
-
+        val = find_parent(dir, parent_id)
+        child = val if val is not None else child
+    return child
+def set_priority(priority_array):
+    # Given a list of photo ids, set the priority of each photo to its index in the list
+    cursor = mysql.connection.cursor()
+    for (photo_id, index) in priority_array:
+        cursor.execute("UPDATE Dirents SET priority = %s WHERE id = %s", (index, photo_id))
+    mysql.connection.commit()
+    cursor.close()
 class Greeting(Resource):
     def get(self):
         # Return a table of contents for the API links below
@@ -71,10 +82,13 @@ class Greeting(Resource):
                     'url': '/dirents',
                     'method': 'DELETE',
                     'description': 'Deletes a directory entry from the database'
-                }]}
-        
+                }]}   
 api.add_resource(Greeting, '/')
 class Database(Resource):
+    def post(self):
+        # Receive an array of dirent id's and set the priority of each dirent to its index
+        data = request.get_json()
+        set_priority(data)
     def get(self):
         # Recursively sets all dirent names from upload folder
         stack = []
@@ -92,10 +106,13 @@ class Database(Resource):
                 now = datetime.datetime.now()
                 # Format date to YYYY-MM-DD hh:mm:ss EST format
                 format_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
-                # Insert the directory into the database
-                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url, priority) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                # Attempt to Insert the directory into the database
+                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/'+ dir
-                cursor.execute(query, (dir, parent_val, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path, '0'))
+                cursor.execute(query, (dir, parent_val, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+                mysql.connection.commit()
+                # Update the path and url of the directory
+                cursor.execute("UPDATE Dirents SET path = %s, url = %s WHERE name = %s", (path, 'https://uploads.jaydnserrano.com'+path, dir))
                 mysql.connection.commit()
                 cursor.close()
                 # Add the directory to the stack
@@ -104,9 +121,11 @@ class Database(Resource):
                 cursor = mysql.connection.cursor()
                 now = datetime.datetime.now()
                 format_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
-                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url, priority) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/' + photo
-                cursor.execute(query, (photo, parent_val, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path, '0'))
+                cursor.execute(query, (photo, parent_val, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
+                mysql.connection.commit()
+                cursor.execute("UPDATE Dirents SET path = %s, url = %s WHERE name = %s", (path, 'https://uploads.jaydnserrano.com'+path, photo))
                 mysql.connection.commit()
                 cursor.close()
                 stack.append(root + '/' + photo)
@@ -129,31 +148,30 @@ class Dirents(Resource):
         direntType = request.form['type']
         # Make cursor
         cursor = mysql.connection.cursor()
-        
         # Check if name already exists
         cursor.execute("SELECT * FROM Dirents WHERE name = %s", (name,))
         if cursor.rowcount > 0:
+            print(cursor.rowcount, cursor.fetchAll())
             return {'response': 'Dirent already exists', 'success': True}
         parent_path = ''
         # Query for the parent name path
-        print(parent)
         if parent != None: 
             cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent, ))
             parent_path = cursor.fetchone()[0]
-        
+        print(name + ' ' + str(parent) + ' ' + str(direntType) + ' ' + parent_path)
         format_date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         path = parent_path + '/' + name
         # Insert the directory into the database
         if direntType == '1':
-            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url, priority) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-            cursor.execute(query, (name, parent, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path, '0'))
+            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(query, (name, parent, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
             # Commit the changes to the database
             mysql.connection.commit()
             cursor.close()
                         
         elif direntType == '0':
-            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url, priority) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-            cursor.execute(query, (name, parent, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path), '0')
+            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
+            cursor.execute(query, (name, parent, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
             # Commit the changes to the database
             mysql.connection.commit()
             cursor.close()
@@ -182,16 +200,26 @@ class Dirents(Resource):
                 width, height = im.size
                 root['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
         # Get all the subdirectories
-        query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL"
+        query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL AND isDir = 1"
         cursor.execute(query)
         for (id, name, parent_dirent, isDir, created_at, path, url, priority) in cursor.fetchall():
             parent = find_parent(root, parent_dirent)
-            if(isDir == 1):
-                parent['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
-            else:
-                im = Image.open(UPLOAD_FOLDER + path)
-                width, height = im.size
-                parent['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+            if(parent == None):
+                print('Parent not found for: ' + name)
+                continue
+            parent['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+        # Get all the photos
+        query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL AND isDir = 0"
+        cursor.execute(query)
+        for (id, name, parent_dirent, isDir, created_at, path, url, priority) in cursor.fetchall():
+            parent = find_parent(root, parent_dirent)
+            if(parent == None):
+                print('Parent not found for: ' + name)
+                continue
+            im = Image.open(UPLOAD_FOLDER + path)
+            width, height = im.size
+            parent['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+        cursor.close()
         return {'response': 'Successfully retrieved all dirents', 'success': True, 'dirents': root}
     
     def delete(self, id):
@@ -220,7 +248,20 @@ class Dirents(Resource):
             return {'response': 'Dirent deleted at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
         else:
             return {'response': 'Dirent does not exist', 'success': False}
-        
+    def put(self, id):
+        name = request.form['name']
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT path FROM Dirents WHERE id = %s", (id, ))
+        path = cursor.fetchone()[0]
+        # Rename the directory or image from the location specified by the variable path
+        try:
+            os.rename(UPLOAD_FOLDER[1:] + path, UPLOAD_FOLDER[1:] + path[:path.rfind('/')+1] + name)
+            cursor.execute("UPDATE Dirents SET name = %s, path = %s, url = %s WHERE id = %s", (name, path[:path.rfind('/')+1] + name, 'https://uploads.jaydnserrano.com' + path[:path.rfind('/')+1] + name, id))
+            cursor.connection.commit()
+            return {'response': 'Dirent renamed at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
+        except Exception as e:
+            print(e)
+            return {'response': 'Dirent could not be renamed', 'success': False, 'error': str(e)}
         
 api.add_resource(Dirents, '/dirents', '/dirents/<id>')
 
