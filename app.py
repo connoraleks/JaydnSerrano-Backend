@@ -36,11 +36,16 @@ def allowed_file(filename):
 def find_parent(root, parent_id):
     # root = { dirs: [], photos: [] }
     # recursively find the parent dict
+    child = None
+    if(len(root['dirs']) == 0):
+        return None
     for dir in root['dirs']:
         if dir['id'] == parent_id:
             return dir
     for dir in root['dirs']:
-        return find_parent(dir, parent_id)
+        val = find_parent(dir, parent_id)
+        child = val if val is not None else child
+    return child
 def set_priority(priority_array):
     # Given a list of photo ids, set the priority of each photo to its index in the list
     cursor = mysql.connection.cursor()
@@ -195,16 +200,26 @@ class Dirents(Resource):
                 width, height = im.size
                 root['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
         # Get all the subdirectories
-        query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL"
+        query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL AND isDir = 1"
         cursor.execute(query)
         for (id, name, parent_dirent, isDir, created_at, path, url, priority) in cursor.fetchall():
             parent = find_parent(root, parent_dirent)
-            if(isDir == 1):
-                parent['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
-            else:
-                im = Image.open(UPLOAD_FOLDER + path)
-                width, height = im.size
-                parent['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+            if(parent == None):
+                print('Parent not found for: ' + name)
+                continue
+            parent['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+        # Get all the photos
+        query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL AND isDir = 0"
+        cursor.execute(query)
+        for (id, name, parent_dirent, isDir, created_at, path, url, priority) in cursor.fetchall():
+            parent = find_parent(root, parent_dirent)
+            if(parent == None):
+                print('Parent not found for: ' + name)
+                continue
+            im = Image.open(UPLOAD_FOLDER + path)
+            width, height = im.size
+            parent['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+        cursor.close()
         return {'response': 'Successfully retrieved all dirents', 'success': True, 'dirents': root}
     
     def delete(self, id):
