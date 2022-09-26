@@ -59,30 +59,31 @@ class Greeting(Resource):
         return {
             'api': [
                 {
-                    'isDir': isDir, 'src': '/database',
+                    'url': '/database',
                     'method': 'GET',
                     'description': 'Verifies the integrity of the database contents with the filesystem'
                 },
                 {
-                    'isDir': isDir, 'src': '/login',
+                    'url': '/login',
                     'method': 'POST',
                     'description': 'Logs in a use to the admin panel'
                 },
                 {
-                    'isDir': isDir, 'src': '/dirents',
+                    'url': '/dirents',
                     'method': 'POST',
                     'description': 'Inserts a new directory entry into the database'
                 },
                 {
-                    'isDir': isDir, 'src': '/dirents',
+                    'url': '/dirents',
                     'method': 'GET',
                     'description': 'Returns a list of directory entries'
                 },
                 {
-                    'isDir': isDir, 'src': '/dirents',
+                    'url': '/dirents',
                     'method': 'DELETE',
                     'description': 'Deletes a directory entry from the database'
-                }]}   
+                }]
+            }
 api.add_resource(Greeting, '/')
 class Database(Resource):
     def post(self):
@@ -187,7 +188,7 @@ class Dirents(Resource):
          
     def get(self):
         # Dirent Structure: id, name, parent, isDir, created_at, path
-        root = {'dirs': [], 'photos': [], 'name': 'root', 'id': 0}
+        root = {'dirs': [], 'photos': [], 'name': 'root', 'id': -1}
         # Get all the root directories
         cursor = mysql.connection.cursor()
         query = "SELECT * FROM Dirents WHERE parent IS NULL"
