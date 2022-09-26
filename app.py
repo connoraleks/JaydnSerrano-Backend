@@ -82,7 +82,8 @@ class Greeting(Resource):
                     'url': '/dirents',
                     'method': 'DELETE',
                     'description': 'Deletes a directory entry from the database'
-                }]}   
+                }]
+            }
 api.add_resource(Greeting, '/')
 class Database(Resource):
     def post(self):
@@ -107,7 +108,7 @@ class Database(Resource):
                 # Format date to YYYY-MM-DD hh:mm:ss EST format
                 format_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
                 # Attempt to Insert the directory into the database
-                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
+                query = "INSERT IGNORE INTO Dirents (name, parent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/'+ dir
                 cursor.execute(query, (dir, parent_val, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
                 mysql.connection.commit()
@@ -121,7 +122,7 @@ class Database(Resource):
                 cursor = mysql.connection.cursor()
                 now = datetime.datetime.now()
                 format_date_time = now.strftime("%Y-%m-%d %H:%M:%S")
-                query = "INSERT IGNORE INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
+                query = "INSERT IGNORE INTO Dirents (name, parent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
                 path = root.split('uploads')[1] + '/' + photo
                 cursor.execute(query, (photo, parent_val, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
                 mysql.connection.commit()
@@ -163,14 +164,14 @@ class Dirents(Resource):
         path = parent_path + '/' + name
         # Insert the directory into the database
         if direntType == '1':
-            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
+            query = "INSERT INTO Dirents (name, parent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
             cursor.execute(query, (name, parent, '1', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
             # Commit the changes to the database
             mysql.connection.commit()
             cursor.close()
                         
         elif direntType == '0':
-            query = "INSERT INTO Dirents (name, parent_dirent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
+            query = "INSERT INTO Dirents (name, parent, isDir, created_at, path, url) VALUES (%s, %s, %s, %s, %s, %s)"
             cursor.execute(query, (name, parent, '0', format_date_time, path, 'https://uploads.jaydnserrano.com'+path))
             # Commit the changes to the database
             mysql.connection.commit()
@@ -186,39 +187,39 @@ class Dirents(Resource):
         return {'response': 'Dirent created at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
          
     def get(self):
-        # Dirent Structure: id, name, parent_dirent, isDir, created_at, path
-        root = {'dirs': [], 'photos': [] }
+        # Dirent Structure: id, name, parent, isDir, created_at, path
+        root = {'dirs': [], 'photos': [], 'name': 'root', 'id': -1}
         # Get all the root directories
         cursor = mysql.connection.cursor()
-        query = "SELECT * FROM Dirents WHERE parent_dirent IS NULL"
+        query = "SELECT * FROM Dirents WHERE parent IS NULL"
         cursor.execute(query)
-        for (id, name, parent_dirent, isDir, created_at, path, url, priority) in cursor.fetchall():
+        for (id, name, parent, isDir, created_at, path, url, priority) in cursor.fetchall():
             if(isDir == 1):
-                root['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+                root['dirs'].append({'id': id, 'name': name, 'parent': parent, 'isDir': isDir, 'src': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
             else:
                 im = Image.open(UPLOAD_FOLDER + path)
                 width, height = im.size
-                root['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+                root['photos'].append({'id': id, 'name': name, 'parent': parent, 'isDir': isDir, 'src': url, 'path': path, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
         # Get all the subdirectories
-        query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL AND isDir = 1"
+        query = "SELECT * FROM Dirents WHERE parent IS NOT NULL AND isDir = 1"
         cursor.execute(query)
-        for (id, name, parent_dirent, isDir, created_at, path, url, priority) in cursor.fetchall():
-            parent = find_parent(root, parent_dirent)
-            if(parent == None):
+        for (id, name, parent, isDir, created_at, path, url, priority) in cursor.fetchall():
+            parent_node = find_parent(root, parent)
+            if(parent_node == None):
                 print('Parent not found for: ' + name)
                 continue
-            parent['dirs'].append({'id': id, 'name': name, 'url': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+            parent_node['dirs'].append({'id': id, 'name': name, 'parent': parent, 'isDir': isDir, 'src': url, 'path': path, 'dirs': [], 'photos': [], 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
         # Get all the photos
-        query = "SELECT * FROM Dirents WHERE parent_dirent IS NOT NULL AND isDir = 0"
+        query = "SELECT * FROM Dirents WHERE parent IS NOT NULL AND isDir = 0"
         cursor.execute(query)
-        for (id, name, parent_dirent, isDir, created_at, path, url, priority) in cursor.fetchall():
-            parent = find_parent(root, parent_dirent)
-            if(parent == None):
+        for (id, name, parent, isDir, created_at, path, url, priority) in cursor.fetchall():
+            parent_node = find_parent(root, parent)
+            if(parent_node == None):
                 print('Parent not found for: ' + name)
                 continue
             im = Image.open(UPLOAD_FOLDER + path)
             width, height = im.size
-            parent['photos'].append({'id': id, 'name': name, 'src': url, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
+            parent_node['photos'].append({'id': id, 'name': name, 'parent': parent, 'isDir': isDir, 'src': url, 'path': path, 'width': width, 'height': height, 'created_at': created_at.strftime("%Y-%m-%d %H:%M:%S"), 'priority': priority})
         cursor.close()
         return {'response': 'Successfully retrieved all dirents', 'success': True, 'dirents': root}
     
@@ -232,7 +233,7 @@ class Dirents(Resource):
         isDir, path = cursor.fetchone()
         if(path and isDir == 1):
             # See if the directory is empty
-            cursor.execute("SELECT * FROM Dirents WHERE parent_dirent = %s", (id, ))
+            cursor.execute("SELECT * FROM Dirents WHERE parent = %s", (id, ))
             if cursor.rowcount > 0:
                 return {'response': 'Directory is not empty', 'success': False}
         if(path):
@@ -250,15 +251,18 @@ class Dirents(Resource):
             return {'response': 'Dirent does not exist', 'success': False}
     def put(self, id):
         name = request.form['name']
+        parent = request.form['parent']
         cursor = mysql.connection.cursor()
         cursor.execute("SELECT path FROM Dirents WHERE id = %s", (id, ))
-        path = cursor.fetchone()[0]
+        old_path = cursor.fetchone()[0]
+        cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent, ))
+        new_path = cursor.fetchone()[0] + '/' + name
         # Rename the directory or image from the location specified by the variable path
         try:
-            os.rename(UPLOAD_FOLDER[1:] + path, UPLOAD_FOLDER[1:] + path[:path.rfind('/')+1] + name)
-            cursor.execute("UPDATE Dirents SET name = %s, path = %s, url = %s WHERE id = %s", (name, path[:path.rfind('/')+1] + name, 'https://uploads.jaydnserrano.com' + path[:path.rfind('/')+1] + name, id))
+            os.rename(UPLOAD_FOLDER[1:] + old_path, UPLOAD_FOLDER[1:] + new_path)
+            cursor.execute("UPDATE Dirents SET name = %s, path = %s, url = %s, parent = %s WHERE id = %s", (name, new_path, 'https://uploads.jaydnserrano.com' + new_path, parent, id))
             cursor.connection.commit()
-            return {'response': 'Dirent renamed at: ' + os.path.join(app.config['UPLOAD_FOLDER'], path), 'success': True}
+            return {'response': 'Dirent moved from ' + old_path + ' to ' + new_path, 'success': True}
         except Exception as e:
             print(e)
             return {'response': 'Dirent could not be renamed', 'success': False, 'error': str(e)}
