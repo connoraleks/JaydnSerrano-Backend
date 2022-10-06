@@ -1,0 +1,78 @@
+<!--
+    tree = {
+        'id': -1,
+        'name': 'root',
+        'parent': NULL,
+        'isDir': 1,
+        'created_at': NULL,
+        'path': '/',
+        'src': 'https://jaydnserrano.s3.amazonaws.com/',
+        'priority': null,
+        'photos': [photo,photo,photo...],
+        'dirs': [dir,dir,dir...],
+    }
+    dir = {
+        'id': dirent[0],
+        'name': dirent[1],
+        'parent': dirent[2],
+        'isDir': dirent[3],
+        'created_at': dirent[4],
+        'path': dirent[5],
+        'src': dirent[6],
+        'priority': dirent[7],
+        'photos': [],
+        'dirs': [],
+    }
+    photo = {
+        'id': dirent[0],
+        'name': dirent[1],
+        'parent': dirent[2],
+        'isDir': dirent[3],
+        'created_at': dirent[4],
+        'path': dirent[5],
+        'src': dirent[6],
+        'priority': dirent[7],
+        'width': dirent[8],
+        'height': dirent[9],
+    }
+-->
+<html>
+    <head>
+        <title>Flask Tutorial</title>
+    </head>
+    <body>
+        <h1>Jaydn Serrano Photo Bucket</h1>
+        <p>Welcome to the API for Jaydn Serrano Photography</p>
+        <p>Here is a list of all the directories and photos in the bucket</p>
+        <ul>
+        {% for dir in tree.dirs recursive%}
+            <li>
+                <h2>{{ dir.name }}</h2>
+                <p>Created at: {{ dir.created_at }}</p>
+                <p>Path: {{ dir.path }}</p>
+                <p>Source: {{ dir.src }}</p>
+                <p>Priority: {{ dir.priority }}</p>
+                <p>Photos:</p>
+                <ul>
+                    {% for photo in dir.photos %}
+                        <li style="border: 1px solid black;">
+                            <h3>{{ photo.name }}</h3>
+                            <p>Created at: {{ photo.created_at }}</p>
+                            <p>Path: {{ photo.path }}</p>
+                            <p>Source: {{ photo.src }}</p>
+                            <p>Priority: {{ photo.priority }}</p>
+                            <p>Width: {{ photo.width }}</p>
+                            <p>Height: {{ photo.height }}</p>
+                            <img src="{{ photo.src }}" alt="{{ photo.name }}" width="100px" height="100px">
+                        </li>
+                    {% endfor %}
+                </ul>
+                <p>Subdirectories:</p>
+                <ul>
+                    {{ loop(dir.dirs) }}
+                </ul>
+            </li>
+        {% endfor %}
+        </ul>
+    </body>
+</html>  

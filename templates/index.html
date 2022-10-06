@@ -4,47 +4,9 @@
     </head>
     <body>
         <h1>Jaydn Serrano Photo Bucket</h1>
+        <p>Welcome to the API for Jaydn Serrano Photography</p>
+        <p>Here are the available endpoints:</p>
         <ul>
-            <!-- folders = {
-                'name': folder['name'],
-                'path': folder['path'],
-                'date': folder['date'],
-                'photos': self.get_photos_by_folder(folder['name']),
-                'folders': self.get_folders_by_folder(folder['name'])
-            } -->
-            <!-- photos = {
-                'name': photo['name'],
-                'path': photo['path'],
-                'date': photo['date'],
-                'width': photo['width'],
-                'height': photo['height'],
-                'src': photo['url']
-            }-->
-            <!-- For folder in folder, recursively display contents -->
-            {% for folder in root['folders'] recursive%}
-                <li style="display:flex; flex-direction:column;">
-                    <h1>{{ folder['name'] }}</h1>
-                    <p>Date: {{ folder['date'] }} Path: {{folder['path']}}</p>
-                    
-                    <h4>Photos</h4>
-                    <div style="display:flex;">
-                        <ul>
-                            {% for photo in folder['photos'] %}
-                                <img src="{{ photo['src'] }}" alt="{{ photo['name'] }}" width="100px" height="100px">
-                            {% endfor %}
-                        </ul>
-                    </div>
-
-                    <h4>Folders</h4>
-                    <div style="display:flex;">
-                    {% if folder['folders'] %}
-                        <ul>
-                            {{ loop(folder['folders']) }}
-                        </ul>
-                    {% endif %}
-                    </div>
-                </li>
-            {% endfor %}
         </ul>
     </body>
 </html>  
