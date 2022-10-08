@@ -196,13 +196,22 @@ class Dirents(Resource):
             parent_id = request.form['parent'] if int(request.form['parent']) != -1 else None
             cursor = mysql.connection.cursor()
             
-            # Check if the dirent already exists WORKS UP TO HERE SO FAR
+            # Check if the dirent already exists 
             cursor.execute("SELECT id FROM Dirents WHERE name = %s AND parent = %s", (name, parent_id))
             if(cursor.rowcount != 0):
-                return make_response({'success': False, 'error': 'Directory already exists'}, 409)            
+                return make_response({'success': False, 'error': 'Directory already exists'}, 409)
+                        
             # Move the object in S3 if it is an image
-            cursor.execute("SELECT path,isDir FROM Dirents WHERE id = %s", (id,))
-            path, isDir = cursor.fetchone()
+            cursor.execute("SELECT name,path,isDir,parent FROM Dirents WHERE id = %s", (id,))
+            currname,path, isDir,currparent = cursor.fetchone()
+            if(currname == name):
+                if(currparent == parent_id):
+                    return make_response({'success': False, 'error': 'No changes made'}, 400)
+                else:
+                    cursor.execute("UPDATE Dirents SET parent = %s WHERE id = %s", (parent_id, id))
+                    mysql.connection.commit()
+                    cursor.close()
+                    return make_response({'success': True, 'response': 'Parent changed from ' + str(currparent) + ' to ' + str(parent_id)}, 200)
             parent_path = ''
             if(parent_id != None):
                 cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent_id,))
@@ -214,24 +223,29 @@ class Dirents(Resource):
                     'old_key': path[1:],
                     'new_key': (parent_path[1:] + '/' if len(parent_path) > 0 else '') + name
                 })
-                bucket.Object((parent_path[1:] + '/' if len(parent_path) > 0 else '') + name).copy_from(CopySource={'Bucket': bucket.name, 'Key': path[1:]}, ExtraArgs={'ACL':'public-read'})
+                bucket.Object((parent_path[1:] + '/' if len(parent_path) > 0 else '') + name).copy_from(CopySource={'Bucket': bucket.name, 'Key': path[1:]}, ACL='public-read')
                 bucket.Object(path[1:]).delete()
+                # Update the path and src of the dirent
+                cursor.execute("UPDATE Dirents SET name = %s,parent = %s, path = %s, src = %s WHERE id = %s", (name, parent_id, parent_path + '/' + name, 'https://uploads.jaydnserrano.com' + parent_path + '/' + name, id))
+                mysql.connection.commit()
             else:
                 # Create empty folder in S3 titled name
-                bucket.put_object(Key=(parent_path[1:] + '/' if len(parent_path) > 0 else '') + name + '/')
-                # Move all the objects in the directory
+                bucket.put_object(Key= name + '/', ACL='public-read')
+                # Move all the objects in the directory if the
                 cursor.execute("SELECT path FROM Dirents WHERE parent = %s", (id,))
                 for dirent in cursor.fetchall():
                     temp.append({
                         'bucket': bucket.name,
                         'old_key': dirent[0][1:],
-                        'new_key': (parent_path[1:] + '/' if len(parent_path) > 0 else '') + name + '/' + dirent[0].split('/')[-1],
+                        'new_key': name + '/' + dirent[0].split('/')[-1],
                     })
-                    bucket.Object( (parent_path[1:] + '/' if len(parent_path) > 0 else '') + name + '/' + dirent[0].split('/')[-1]).copy_from(CopySource={'Bucket': bucket.name, 'Key': dirent[0][1:]})
+                    bucket.Object( name + '/' + dirent[0].split('/')[-1]).copy_from(CopySource={'Bucket': bucket.name, 'Key': dirent[0][1:]}, ACL='public-read')
                     bucket.Object(dirent[0][1:]).delete()
-            # Update the database
-            cursor.execute("UPDATE Dirents SET name = %s, parent = %s, path = %s, src = %s WHERE id = %s", (name, parent_id, (parent_path[1:] + '/' if len(parent_path) > 0 else '') + name, 'https://uploads.jaydnserrano.com/' + (parent_path[1:] + '/' if len(parent_path) > 0 else '') + name, id))
-            mysql.connection.commit()
+                # Delete the old folder
+                bucket.Object(path[1:] + '/').delete()
+                # Update the database
+                cursor.execute("UPDATE Dirents SET name = %s ,parent = %s, path = %s, src = %s WHERE id = %s", (name,parent_id, parent_path + '/' + name, 'https://uploads.jaydnserrano.com' + parent_path + '/' + name, id))
+                mysql.connection.commit()
             
             #Update the child photos to reflect the new src and path of the parent
             cursor.execute("SELECT * FROM Dirents WHERE parent = %s AND isDir = 0", (id,))
