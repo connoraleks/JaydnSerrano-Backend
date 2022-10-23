@@ -186,7 +186,45 @@ class Login(Resource):
 api.add_resource(Login, '/login')
 class Dirents(Resource):
     def post(self, id=None):
-        if(request.form['action'] == 'edit'):
+        if(request.form['action'] == 'add'):
+            if(id != None):
+                return make_response({'success': False, 'name': request.form['name'], 'id': id}, 200)
+            isDir = request.form['isDir']
+            name = request.form['name'] if 'name' in request.form else None
+            parent = request.form['parent'] if 'parent' in request.form and request.form['parent'] != '-1' else None
+            cursor = mysql.connection.cursor()
+            # If the new dirent is a directory
+            if(isDir == '1'):
+                if(name == None):
+                    return make_response({'success': False, 'error': 'No name given for new directory.'}, 400)
+                cursor.execute("Select id FROM Dirents WHERE name = %s AND parent = %s", (name, parent))
+                if(cursor.rowcount != 0):
+                    return make_response({'success': False, 'error': 'Directory already exists.'}, 400)
+                parent_path = ''
+                if(parent != None):
+                    cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent,))
+                    parent_path = cursor.fetchone()[0]
+                src = 'https://uploads.jaydnserrano.com' + parent_path + '/' + name
+                path = parent_path + '/' + name
+                cursor.execute("INSERT INTO Dirents (name, isDir, src, parent, path) VALUES (%s, 1, %s, %s, %s)", (name, src, parent, path))
+                mysql.connection.commit()
+                cursor.close()
+                bucket.put_object(Key=name + '/', Body='')
+                return make_response({'success': True, 'data': {'id': cursor.lastrowid, 'name': name, 'isDir': isDir, 'parent': parent, 'path': path, 'src': src}}, 200)
+            # If the new dirent is a photo
+            elif(isDir == '0'):
+                #TODO: Add photo
+                photo = request.files['file']
+                # Load the image from the request
+                img = Image.open(photo)
+                # Get the width and height of the image
+                width, height = img.size
+                # Return the name, width, and height of the image
+                return make_response({'success': True, 'data': {'name': name, 'parent': parent, 'width': width, 'height': height}}, 200)
+            # If the new dirent is neither a directory or a photo
+            else:
+                return make_response({'success': False, 'error': 'isDir must be 0 or 1.'}, 400)
+        elif(request.form['action'] == 'edit'):
             # If ID was not passed
             if(id == None):
                 return make_response({'success': False, 'error': 'Cannot edit NULL directory'}, 400)
@@ -265,6 +303,59 @@ class Dirents(Resource):
             return make_response(buildTreeOneLevel(), 200)
         else:
             return make_response(buildTreeOneLevel(id), 200)
+    
+    def delete(self, id=None):
+        # If ID was not passed
+        if(id == None):
+            return make_response({'success': False, 'error': 'Cannot delete root'}, 400)
+        # Mysql retrieval 
+        cursor = mysql.connection.cursor()
+        cursor.execute("SELECT isDir FROM Dirents WHERE id = %s", (id,))
+        # If the dirent does not exist
+        if(cursor.rowcount == 0):
+            return make_response({'success': False, 'error': 'Dirent does not exist'}, 404)
+        
+        # If the dirent is a directory
+        if(cursor.fetchone()[0] == 1):
+            
+            # Return failure if there are children 
+            cursor.execute("SELECT id FROM Dirents WHERE parent = %s", (id,))
+            if(cursor.rowcount != 0):
+                return make_response({'success': False, 'error': 'Directory is not empty'}, 409)
+            
+            # Delete the directory in S3
+            cursor.execute("SELECT path FROM Dirents WHERE id = %s", (id,))
+            path = cursor.fetchone()[0]
+            bucket.Object(path[1:] + '/').delete()
+            
+            # Delete the directory in the database
+            cursor.execute("DELETE FROM Dirents WHERE id = %s", (id,))
+            mysql.connection.commit()
+            cursor.close()
+            
+            # Return success
+            return make_response({'success': True, 'response': 'Deleted directory ' + path}, 200)
+        
+        #Else if the dirent is a photo
+        elif(cursor.fetchone()[0] == 0):
+            
+            # Delete the photo in S3
+            cursor.execute("SELECT path FROM Dirents WHERE id = %s", (id,))
+            path = cursor.fetchone()[0]
+            bucket.Object(path[1:]).delete()
+            
+            # Delete the photo in the database
+            cursor.execute("DELETE FROM Dirents WHERE id = %s", (id,))
+            mysql.connection.commit()
+            cursor.close()
+            
+            # Return success
+            return make_response({'success': True, 'response': 'Deleted photo ' + path}, 200)
+        
+        # Else if the dirent is neither
+        else:
+            return make_response({'success': False, 'error': 'isDir set incorrectly.'}, 400)
+        
 api.add_resource(Dirents, '/dirents', '/dirents/<id>')
 
 if __name__ == '__main__':
