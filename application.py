@@ -213,14 +213,16 @@ class Dirents(Resource):
                 return make_response({'success': True, 'data': {'id': cursor.lastrowid, 'name': name, 'isDir': isDir, 'parent': parent, 'path': path, 'src': src}}, 200)
             # If the new dirent is a photo
             elif(isDir == '0'):
-                #TODO: Add photo
-                photo = request.files['file']
-                # Load the image from the request
-                img = Image.open(photo)
-                # Get the width and height of the image
-                width, height = img.size
-                # Return the name, width, and height of the image
-                return make_response({'success': True, 'data': {'name': name, 'parent': parent, 'width': width, 'height': height}}, 200)
+                # Form data contains name, parent, isDir, and file, with respective labels
+                file = request.files['file']
+                if(file == None):
+                    return make_response({'success': False, 'error': 'No file given.'}, 400)
+                if(name == None):
+                    name = file.filename
+                cursor.execute("Select id FROM Dirents WHERE name = %s AND parent = %s", (name, parent))
+                if(cursor.rowcount != 0):
+                    return make_response({'success': False, 'error': 'Photo already exists.'}, 400)
+                return make_response({'success': True, 'data': 'Photo uploaded successfully.'}, 200)
             # If the new dirent is neither a directory or a photo
             else:
                 return make_response({'success': False, 'error': 'isDir must be 0 or 1.'}, 400)
