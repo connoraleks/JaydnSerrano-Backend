@@ -214,15 +214,8 @@ class Dirents(Resource):
             # If the new dirent is a photo
             elif(isDir == '0'):
                 # Form data contains name, parent, isDir, and file, with respective labels
-                file = request.files['file']
-                if(file == None):
-                    return make_response({'success': False, 'error': 'No file given.'}, 400)
-                if(name == None):
-                    name = file.filename
-                cursor.execute("Select id FROM Dirents WHERE name = %s AND parent = %s", (name, parent))
-                if(cursor.rowcount != 0):
-                    return make_response({'success': False, 'error': 'Photo already exists.'}, 400)
-                return make_response({'success': True, 'data': 'Photo uploaded successfully.'}, 200)
+                file = request.files['file'] if 'file' in request.files else None
+                return make_response({'success': True, 'file': file.filename if file else 'None', 'name': name, 'parent': parent}, 200)
             # If the new dirent is neither a directory or a photo
             else:
                 return make_response({'success': False, 'error': 'isDir must be 0 or 1.'}, 400)
