@@ -206,10 +206,11 @@ class Dirents(Resource):
                     parent_path = cursor.fetchone()[0]
                 path = parent_path + '/' + name
                 src = 'https://uploads.jaydnserrano.com' + path
-                cursor.execute("INSERT INTO Dirents (name, isDir, src, parent, path) VALUES (%s, 1, %s, %s, %s)", (name, src, parent, path))
+                created_at = datetime.datetime.now()
+                cursor.execute("INSERT INTO Dirents (name, isDir, src, parent, path, created_at) VALUES (%s, %s, %s, %s, %s, %s)", (name, isDir, src, parent, path, created_at))
                 mysql.connection.commit()
                 cursor.close()
-                bucket.put_object(Key=name + '/', Body='')
+                bucket.put_object(Key=name + '/', Body='', ACL='public-read')
                 return make_response({'success': True, 'data': {'id': cursor.lastrowid, 'name': name, 'isDir': isDir, 'parent': parent, 'path': path, 'src': src}}, 200)
             # If the new dirent is a photo
             elif(isDir == '0'):
@@ -239,11 +240,12 @@ class Dirents(Resource):
                 src = 'https://uploads.jaydnserrano.com' + path
                 img = Image.open(file)
                 width, height = img.size
+                created_at = datetime.datetime.now()
                 
                 # Upload the file to the proper folder in S3
-                bucket.put_object(Key=path[1:], Body=file)
+                bucket.put_object(Key=path[1:], Body=file, ACL='public-read', ContentType=file.content_type)
                 # Add the file to the database
-                cursor.execute("INSERT INTO Dirents (name, isDir, src, parent, path, width, height) VALUES (%s, 0, %s, %s, %s, %s, %s)", (name, src, parent, path, width, height))
+                cursor.execute("INSERT INTO Dirents (name, isDir, src, parent, path, width, height, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (name, isDir, src, parent, path, width, height, created_at))
                 # Commit the changes to the database
                 mysql.connection.commit()
                 # Verify that the file was added to the database
