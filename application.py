@@ -204,8 +204,8 @@ class Dirents(Resource):
                 if(parent != None):
                     cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent,))
                     parent_path = cursor.fetchone()[0]
-                src = 'https://uploads.jaydnserrano.com' + parent_path + '/' + name
                 path = parent_path + '/' + name
+                src = 'https://uploads.jaydnserrano.com' + path
                 cursor.execute("INSERT INTO Dirents (name, isDir, src, parent, path) VALUES (%s, 1, %s, %s, %s)", (name, src, parent, path))
                 mysql.connection.commit()
                 cursor.close()
@@ -215,7 +215,33 @@ class Dirents(Resource):
             elif(isDir == '0'):
                 # Form data contains name, parent, isDir, and file, with respective labels
                 file = request.files['file'] if 'file' in request.files else None
-                return make_response({'success': True, 'file': file.filename if file else 'None', 'name': name, 'parent': parent}, 200)
+                # If the parent is not given
+                if(parent == None):
+                    return make_response({'success': False, 'error': 'No parent given.'}, 400)
+                # If the file is not given
+                if(file == None):
+                    return make_response({'success': False, 'error': 'No file given.'}, 400)
+                # If the file is not an image
+                if(file.content_type not in ['image/jpeg', 'image/png', 'image/gif']):
+                    return make_response({'success': False, 'error': 'File is not an image.'}, 400)
+                # Valid file
+                name = file.filename
+                # If the file already exists
+                cursor.execute("SELECT id FROM Dirents WHERE name = %s", (name,))
+                if(cursor.rowcount != 0):
+                    return make_response({'success': False, 'error': 'File already exists.'}, 400)
+                # Get the parent path
+                cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent,))
+                if(cursor.rowcount == 0):
+                    return make_response({'success': False, 'error': 'Parent does not exist.'}, 400)
+                parent_path = cursor.fetchone()[0]
+                path = parent_path + '/' + name
+                src = 'https://uploads.jaydnserrano.com' + path
+                img = Image.open(file)
+                width, height = img.size
+                return make_response({'success': True, 'data': {'id': cursor.lastrowid, 'name': name, 'isDir': isDir, 'parent': parent, 'path': path, 'src': src, 'width': width, 'height': height}}, 200)
+                
+                
             # If the new dirent is neither a directory or a photo
             else:
                 return make_response({'success': False, 'error': 'isDir must be 0 or 1.'}, 400)
