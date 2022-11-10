@@ -346,7 +346,8 @@ class Dirents(Resource):
         # If the dirent does not exist
         if(cursor.rowcount == 0):
             return make_response({'success': False, 'error': 'Dirent does not exist'}, 404)
-        return make_response({'success': True, 'response': 'Deleted ' + str(id), 'isDir': cursor.fetchone()}, 200)
+        isDir = cursor.fetchone()[0]
+        return make_response({'success': True, 'response': 'Deleted ' + str(id), 'isDir': isDir}, 200)
 api.add_resource(Dirents, '/dirents', '/dirents/<id>')
 
 if __name__ == '__main__':
