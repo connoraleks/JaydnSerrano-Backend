@@ -347,7 +347,47 @@ class Dirents(Resource):
         if(cursor.rowcount == 0):
             return make_response({'success': False, 'error': 'Dirent does not exist'}, 404)
         isDir = cursor.fetchone()[0]
-        return make_response({'success': True, 'response': 'Deleted ' + str(id), 'isDir': isDir}, 200)
+        # If the dirent is a directory
+        if(isDir == 1):
+            
+            # Return failure if there are children 
+            cursor.execute("SELECT id FROM Dirents WHERE parent = %s", (id,))
+            if(cursor.rowcount != 0):
+                return make_response({'success': False, 'error': 'Directory is not empty'}, 409)
+            
+            # Delete the directory in S3
+            cursor.execute("SELECT path FROM Dirents WHERE id = %s", (id,))
+            path = cursor.fetchone()[0]
+            bucket.Object(path[1:] + '/').delete()
+            
+            # Delete the directory in the database
+            cursor.execute("DELETE FROM Dirents WHERE id = %s", (id,))
+            mysql.connection.commit()
+            cursor.close()
+            
+            # Return success
+            return make_response({'success': True, 'response': 'Deleted directory ' + path}, 200)
+        
+        #Else if the dirent is a photo
+        elif(isDir == 0):
+            
+            # Delete the photo in S3
+            cursor.execute("SELECT path FROM Dirents WHERE id = %s", (id,))
+            path = cursor.fetchone()[0]
+            bucket.Object(path[1:]).delete()
+            
+            # Delete the photo in the database
+            cursor.execute("DELETE FROM Dirents WHERE id = %s", (id,))
+            mysql.connection.commit()
+            cursor.close()
+            
+            # Return success
+            return make_response({'success': True, 'response': 'Deleted photo ' + path}, 200)
+        
+        # Else if the dirent is neither
+        else:
+            return make_response({'success': False, 'error': 'isDir set incorrectly.'}, 400)
+        
 api.add_resource(Dirents, '/dirents', '/dirents/<id>')
 
 if __name__ == '__main__':
