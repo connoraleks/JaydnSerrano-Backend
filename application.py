@@ -347,7 +347,7 @@ class Dirents(Resource):
         # If the dirent does not exist
         if(cursor.rowcount == 0):
             return make_response({'success': False, 'error': 'Dirent does not exist'}, 404)
-        
+        print(cursor.fetchone(), 'This is the isDir')
         # If the dirent is a directory
         if(cursor.fetchone()[0] == 1):
             
