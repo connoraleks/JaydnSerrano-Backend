@@ -239,8 +239,18 @@ class Dirents(Resource):
                 src = 'https://uploads.jaydnserrano.com' + path
                 img = Image.open(file)
                 width, height = img.size
-                return make_response({'success': True, 'data': {'id': cursor.lastrowid, 'name': name, 'isDir': isDir, 'parent': parent, 'path': path, 'src': src, 'width': width, 'height': height}}, 200)
                 
+                # Upload the file to the proper folder in S3
+                bucket.put_object(Key=path[1:], Body=file)
+                # Add the file to the database
+                cursor.execute("INSERT INTO Dirents (name, isDir, src, parent, path, width, height) VALUES (%s, 0, %s, %s, %s, %s, %s)", (name, src, parent, path, width, height))
+                # Commit the changes to the database
+                mysql.connection.commit()
+                # Verify that the file was added to the database
+                cursor.execute("SELECT id FROM Dirents WHERE name = %s", (name,))
+                if(cursor.rowcount == 0):
+                    return make_response({'success': False, 'error': 'File was not added to the database.'}, 400)
+                return make_response({'success': True, 'data': {'id': cursor.lastrowid, 'name': name, 'isDir': isDir, 'parent': parent, 'path': path, 'src': src, 'width': width, 'height': height}}, 200)
                 
             # If the new dirent is neither a directory or a photo
             else:
