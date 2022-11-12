@@ -231,6 +231,8 @@ class Dirents(Resource):
                 cursor.execute("SELECT id FROM Dirents WHERE name = %s", (name,))
                 if(cursor.rowcount != 0):
                     return make_response({'success': False, 'error': 'File already exists.'}, 400)
+                #Save the image with proper read permissions and proper content type to its proper directory in S3
+                bucket.put_object(Key=path[1:], Body=file, ACL='public-read', ContentType=file.content_type)
                 # Get the parent path
                 cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent,))
                 if(cursor.rowcount == 0):
@@ -241,8 +243,6 @@ class Dirents(Resource):
                 img = Image.open(file)
                 width, height = img.size
                 created_at = datetime.datetime.now()
-                #Save the image with proper read permissions and proper content type to its proper directory in S3
-                bucket.put_object(Key=path[1:], Body=file, ACL='public-read', ContentType=file.content_type)
                 # Add the file to the database
                 cursor.execute("INSERT INTO Dirents (name, isDir, src, parent, path, width, height, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (name, isDir, src, parent, path, width, height, created_at))
                 # Commit the changes to the database
