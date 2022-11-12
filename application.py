@@ -231,8 +231,6 @@ class Dirents(Resource):
                 cursor.execute("SELECT id FROM Dirents WHERE name = %s", (name,))
                 if(cursor.rowcount != 0):
                     return make_response({'success': False, 'error': 'File already exists.'}, 400)
-                #Save the image with proper read permissions and proper content type to its proper directory in S3
-                bucket.put_object(Key=path[1:], Body=file, ACL='public-read', ContentType=file.content_type)
                 # Get the parent path
                 cursor.execute("SELECT path FROM Dirents WHERE id = %s", (parent,))
                 if(cursor.rowcount == 0):
@@ -240,6 +238,8 @@ class Dirents(Resource):
                 parent_path = cursor.fetchone()[0]
                 path = parent_path + '/' + name
                 src = 'https://uploads.jaydnserrano.com' + path
+                #Save the image with proper read permissions and proper content type to its proper directory in S3
+                bucket.put_object(Key=path[1:], Body=file, ACL='public-read', ContentType=file.content_type)
                 img = Image.open(file)
                 width, height = img.size
                 created_at = datetime.datetime.now()
